@@ -8,6 +8,54 @@ import { validateAddressByChain } from './utils/validation';
 // Load environment variables
 dotenv.config();
 
+// Shared function for fetching SUI holdings
+const fetchSuiHoldings = async (address: string, forceRefresh = false) => {
+  // Validate request parameters
+  if (!address) {
+    throw new Error('Missing address parameter');
+  }
+
+  // Validate SUI address format
+  const addressError = validateAddressByChain(address, 'SUI');
+  if (addressError) {
+    throw new Error(addressError);
+  }
+
+  // Initialize Sui client
+  const client = new SuiClient({ url: getFullnodeUrl('mainnet') });
+
+  // Fetch balances using SUI SDK
+  const balances = await client.getAllBalances({ owner: address });
+
+  // Transform balances into holdings format
+  const holdings = balances.map(balance => ({
+    coinType: balance.coinType,
+    balance: balance.totalBalance,
+    objectId: '', // Not available in getAllBalances
+    objectCount: 1 // Not available in getAllBalances
+  }));
+
+  // Log the response for debugging
+  logger.info('Successfully fetched SUI holdings', { 
+    address,
+    holdingsCount: holdings.length,
+    holdings: holdings.map(h => ({
+      coinType: h.coinType,
+      balance: h.balance
+    }))
+  });
+
+  return {
+    success: true,
+    data: { holdings },
+    metadata: {
+      duration: 0, // TODO: Add timing
+      timestamp: new Date().toISOString(),
+      service: 'evarra-backend-service'
+    }
+  };
+};
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -28,77 +76,46 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// SUI holdings endpoint
-app.post('/api/sui/holdings', async (req, res) => {
-  const { address, forceRefresh } = req.body;
-
+// SUI holdings endpoint - GET (for easy testing)
+app.get('/api/sui/holdings', async (req, res) => {
   try {
-    // Validate request parameters
-    if (!address) {
-      logger.error('Missing address parameter');
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Missing address parameter' 
-      });
-    }
-
-    // Validate SUI address format
-    const addressError = validateAddressByChain(address, 'SUI');
-    if (addressError) {
-      logger.error('Invalid address format', { address });
-      return res.status(400).json({ 
-        success: false, 
-        error: addressError 
-      });
-    }
-
-    // Initialize Sui client
-    const client = new SuiClient({ url: getFullnodeUrl('mainnet') });
-
-    // Fetch balances using SUI SDK
-    const balances = await client.getAllBalances({ owner: address });
-
-    // Transform balances into holdings format
-    const holdings = balances.map(balance => ({
-      coinType: balance.coinType,
-      balance: balance.totalBalance,
-      objectId: '', // Not available in getAllBalances
-      objectCount: 1 // Not available in getAllBalances
-    }));
-
-    // Log the response for debugging
-    logger.info('Successfully fetched SUI holdings', { 
-      address,
-      holdingsCount: holdings.length,
-      holdings: holdings.map(h => ({
-        coinType: h.coinType,
-        balance: h.balance
-      }))
-    });
-
-    return res.json({
-      success: true,
-      data: { holdings },
-      metadata: {
-        duration: 0, // TODO: Add timing
-        timestamp: new Date().toISOString(),
-        service: 'evarra-backend-service'
-      }
-    });
-
+    const { address, forceRefresh } = req.query;
+    const result = await fetchSuiHoldings(address as string, forceRefresh === 'true');
+    res.json(result);
   } catch (error) {
-    logger.error('Error fetching SUI holdings', {
-      address,
+    logger.error('Error fetching SUI holdings (GET)', {
+      address: req.query.address,
       error: error instanceof Error ? {
         message: error.message,
         name: error.name,
         stack: error.stack
       } : error
     });
-
-    return res.status(500).json({
+    res.status(400).json({
       success: false,
-      error: 'Failed to fetch holdings'
+      error: error instanceof Error ? error.message : 'Failed to fetch holdings'
+    });
+  }
+});
+
+// SUI holdings endpoint - POST (for production use)
+app.post('/api/sui/holdings', async (req, res) => {
+  try {
+    const { address, forceRefresh } = req.body;
+    const result = await fetchSuiHoldings(address, forceRefresh);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching SUI holdings (POST)', {
+      address: req.body.address,
+      error: error instanceof Error ? {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      } : error
+    });
+    res.status(400).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch holdings'
     });
   }
 });
@@ -111,7 +128,10 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/api/health',
       sui: {
-        holdings: '/api/sui/holdings'
+        holdings: {
+          get: '/api/sui/holdings?address=YOUR_ADDRESS',
+          post: '/api/sui/holdings'
+        }
       }
     }
   });
@@ -121,5 +141,6 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Evarra Backend Service running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🔗 SUI Holdings: POST http://localhost:${PORT}/api/sui/holdings`);
+  console.log(`🔗 SUI Holdings (GET): http://localhost:${PORT}/api/sui/holdings?address=YOUR_ADDRESS`);
+  console.log(`🔗 SUI Holdings (POST): POST http://localhost:${PORT}/api/sui/holdings`);
 }); 
