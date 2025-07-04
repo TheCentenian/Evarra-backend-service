@@ -2,13 +2,13 @@
   "name": "evarra-backend-service",
   "version": "1.0.0",
   "description": "Evarra Backend Service - SUI API endpoints",
-  "main": "dist/index.js",
+  "main": "src/index.js",
   "scripts": {
     "dev": "node src/index.js",
-    "build": "tsc",
+    "build": "echo 'No build step needed - using JavaScript'",
     "start": "node src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "type-check": "tsc --noEmit"
+    "type-check": "echo 'No TypeScript - using JavaScript'"
   },
   "keywords": [
     "sui",
