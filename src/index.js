@@ -16,6 +16,10 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const { SuiClient, getFullnodeUrl } = require('@mysten/sui/client');
+const authRoutes = require('./routes/auth');
+const goalRoutes = require('./routes/goals');
+const walletRoutes = require('./routes/wallets');
+const cacheRoutes = require('./routes/cache');
 const logger = {
     info: (message, data) => console.log(`[INFO] ${message}`, data || ''),
     error: (message, data) => console.error(`[ERROR] ${message}`, data || ''),
@@ -248,6 +252,18 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// Auth routes
+app.use('/api/auth', authRoutes);
+
+// Goals routes
+app.use('/api/goals', goalRoutes);
+
+// Wallets routes
+app.use('/api/wallets', walletRoutes);
+
+// Cache routes
+app.use('/api/cache', cacheRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({
@@ -375,6 +391,48 @@ app.get('/', (req, res) => {
         version: '1.0.0',
         endpoints: {
             health: '/api/health',
+            auth: {
+                register: 'POST /api/auth/register',
+                login: 'POST /api/auth/login',
+                getUser: 'GET /api/auth/user/:userId',
+                updateUser: 'PUT /api/auth/user/:userId',
+                health: 'GET /api/auth/health'
+            },
+            goals: {
+                create: 'POST /api/goals',
+                getById: 'GET /api/goals/:goalId',
+                getUserGoals: 'GET /api/goals/user/:userId',
+                update: 'PUT /api/goals/:goalId',
+                delete: 'DELETE /api/goals/:goalId',
+                getProgress: 'GET /api/goals/:goalId/progress',
+                updateProgress: 'PUT /api/goals/:goalId/progress',
+                getAll: 'GET /api/goals',
+                health: 'GET /api/goals/health'
+            },
+            wallets: {
+                create: 'POST /api/wallets',
+                getById: 'GET /api/wallets/:walletId',
+                getUserWallets: 'GET /api/wallets/user/:userId',
+                update: 'PUT /api/wallets/:walletId',
+                delete: 'DELETE /api/wallets/:walletId',
+                getByAddress: 'GET /api/wallets/user/:userId/address/:address/chain/:chain',
+                getByChain: 'GET /api/wallets/user/:userId/chain/:chain',
+                getAll: 'GET /api/wallets',
+                health: 'GET /api/wallets/health'
+            },
+            cache: {
+                walletData: {
+                    get: 'GET /api/cache/wallet-data?walletId=ID&dataType=holdings',
+                    post: 'POST /api/cache/wallet-data',
+                    delete: 'DELETE /api/cache/wallet-data?walletId=ID'
+                },
+                metadata: {
+                    get: 'GET /api/cache/metadata?coinType=TYPE',
+                    post: 'POST /api/cache/metadata',
+                    put: 'PUT /api/cache/metadata'
+                },
+                stats: 'GET /api/cache/stats'
+            },
             sui: {
                 holdings: {
                     get: '/api/sui/holdings?address=YOUR_ADDRESS',
@@ -393,12 +451,29 @@ app.get('/', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-    console.log(`🚀 Evarra Backend Service running on port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-    console.log(`🔗 SUI Holdings (GET): http://localhost:${PORT}/api/sui/holdings?address=YOUR_ADDRESS`);
-    console.log(`🔗 SUI Holdings (POST): POST http://localhost:${PORT}/api/sui/holdings`);
-    console.log(`🔗 SUI Transactions (GET): http://localhost:${PORT}/api/sui/transactions?address=YOUR_ADDRESS&limit=50`);
-    console.log(`🔗 SUI Transactions (POST): POST http://localhost:${PORT}/api/sui/transactions`);
-    console.log(`🔗 SUI Metadata (POST): POST http://localhost:${PORT}/api/sui/metadata`);
+const https = require('https');
+const fs = require('fs');
+
+const sslOptions = {
+  key: fs.readFileSync('server.key'),
+  cert: fs.readFileSync('server.cert')
+};
+
+https.createServer(sslOptions, app).listen(PORT, () => {
+  console.log(`🚀 Evarra Backend Service running on HTTPS port ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`🔐 Auth Register: POST http://localhost:${PORT}/api/auth/register`);
+  console.log(`🔐 Auth Login: POST http://localhost:${PORT}/api/auth/login`);
+  console.log(`🔐 Auth Health: GET http://localhost:${PORT}/api/auth/health`);
+  console.log(`🎯 Goals Create: POST http://localhost:${PORT}/api/goals`);
+  console.log(`🎯 Goals Get User: GET http://localhost:${PORT}/api/goals/user/:userId`);
+  console.log(`🎯 Goals Health: GET http://localhost:${PORT}/api/goals/health`);
+  console.log(`💰 Wallets Create: POST http://localhost:${PORT}/api/wallets`);
+  console.log(`💰 Wallets Get User: GET http://localhost:${PORT}/api/wallets/user/:userId`);
+  console.log(`💰 Wallets Health: GET http://localhost:${PORT}/api/wallets/health`);
+  console.log(`🔗 SUI Holdings (GET): http://localhost:${PORT}/api/sui/holdings?address=YOUR_ADDRESS`);
+  console.log(`🔗 SUI Holdings (POST): POST http://localhost:${PORT}/api/sui/holdings`);
+  console.log(`🔗 SUI Transactions (GET): http://localhost:${PORT}/api/sui/transactions?address=YOUR_ADDRESS&limit=50`);
+  console.log(`🔗 SUI Transactions (POST): POST http://localhost:${PORT}/api/sui/transactions`);
+  console.log(`🔗 SUI Metadata (POST): POST http://localhost:${PORT}/api/sui/metadata`);
 });

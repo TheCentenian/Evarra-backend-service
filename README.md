@@ -5,6 +5,12 @@ Backend service for Evarra Tracker, providing SUI blockchain API endpoints.
 ## 🚀 Features
 
 - **SUI Holdings Endpoint**: Fetch wallet holdings using SUI SDK
+- **SUI Transactions Endpoint**: Fetch wallet transactions using SUI SDK
+- **SUI Metadata Endpoint**: Fetch token metadata using SUI SDK
+- **MongoDB Cache System**: Aggressive caching for 80-90% API reduction
+- **Authentication System**: User registration, login, and session management
+- **Goals Management**: CRUD operations for user goals
+- **Wallets Management**: CRUD operations for user wallets
 - **Health Check**: Service health monitoring
 - **CORS Support**: Cross-origin request handling
 - **Error Handling**: Comprehensive error logging and responses
@@ -33,6 +39,8 @@ Backend service for Evarra Tracker, providing SUI blockchain API endpoints.
    ```bash
    PORT=3000
    CORS_ORIGIN=http://localhost:3000
+   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/evarra
+   MONGODB_DATABASE=evarra
    ```
 
 4. **Start Development Server**
@@ -104,6 +112,27 @@ POST /api/sui/holdings
 }
 ```
 
+### Cache Endpoints
+
+#### Wallet Data Cache
+```
+GET /api/cache/wallet-data?walletId=ID&dataType=holdings
+POST /api/cache/wallet-data
+DELETE /api/cache/wallet-data?walletId=ID
+```
+
+#### Metadata Cache
+```
+GET /api/cache/metadata?coinType=TYPE
+POST /api/cache/metadata
+PUT /api/cache/metadata
+```
+
+#### Cache Statistics
+```
+GET /api/cache/stats
+```
+
 ## 🔧 Configuration
 
 ### Environment Variables
@@ -112,6 +141,8 @@ POST /api/sui/holdings
 |----------|-------------|---------|
 | `PORT` | Server port | `3000` |
 | `CORS_ORIGIN` | Allowed CORS origin | `http://localhost:3000` |
+| `MONGODB_URI` | MongoDB Atlas connection string | Required |
+| `MONGODB_DATABASE` | MongoDB database name | `evarra` |
 
 ## 🚀 Deployment
 
@@ -135,10 +166,18 @@ This backend service is part of the **Phase 1** migration from Cloudflare Pages 
 
 ### ✅ Completed
 - [x] SUI holdings endpoint
+- [x] SUI transactions endpoint
+- [x] SUI metadata endpoint
+- [x] MongoDB cache system
+- [x] Authentication system
+- [x] Goals management
+- [x] Wallets management
 - [x] Health check endpoint
 - [x] Error handling
 - [x] Input validation
 - [x] Logging system
+- [x] Cache endpoints
+- [x] Cache statistics
 
 ### 🔄 In Progress
 - [ ] Deploy to Render
@@ -146,10 +185,9 @@ This backend service is part of the **Phase 1** migration from Cloudflare Pages 
 - [ ] Compare with existing worker response
 
 ### 📋 Planned
-- [ ] SUI transactions endpoint
-- [ ] SUI metadata endpoint
-- [ ] Authentication system
-- [ ] Database integration
+- [ ] Cache-first strategy for SUI endpoints
+- [ ] Advanced cache monitoring
+- [ ] Cache performance optimization
 
 ## 🐛 Troubleshooting
 
