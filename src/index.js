@@ -451,29 +451,77 @@ app.get('/', (req, res) => {
 });
 
 // Start server
-const https = require('https');
-const fs = require('fs');
+const isProduction = process.env.NODE_ENV === 'production';
 
-const sslOptions = {
-  key: fs.readFileSync('server.key'),
-  cert: fs.readFileSync('server.cert')
-};
+if (isProduction) {
+  // Use HTTP for production (Render)
+  app.listen(PORT, '0.0.0.0', () => {
+    const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    console.log(`🚀 Evarra Backend Service running on HTTP port ${PORT}`);
+    console.log(`📊 Health check: ${baseUrl}/api/health`);
+    console.log(`🔐 Auth Register: POST ${baseUrl}/api/auth/register`);
+    console.log(`🔐 Auth Login: POST ${baseUrl}/api/auth/login`);
+    console.log(`🔐 Auth Health: GET ${baseUrl}/api/auth/health`);
+    console.log(`🎯 Goals Create: POST ${baseUrl}/api/goals`);
+    console.log(`🎯 Goals Get User: GET ${baseUrl}/api/goals/user/:userId`);
+    console.log(`🎯 Goals Health: GET ${baseUrl}/api/goals/health`);
+    console.log(`💰 Wallets Create: POST ${baseUrl}/api/wallets`);
+    console.log(`💰 Wallets Get User: GET ${baseUrl}/api/wallets/user/:userId`);
+    console.log(`💰 Wallets Health: GET ${baseUrl}/api/wallets/health`);
+    console.log(`🔗 SUI Holdings (GET): ${baseUrl}/api/sui/holdings?address=YOUR_ADDRESS`);
+    console.log(`🔗 SUI Holdings (POST): POST ${baseUrl}/api/sui/holdings`);
+    console.log(`🔗 SUI Transactions (GET): ${baseUrl}/api/sui/transactions?address=YOUR_ADDRESS&limit=50`);
+    console.log(`🔗 SUI Transactions (POST): POST ${baseUrl}/api/sui/transactions`);
+    console.log(`🔗 SUI Metadata (POST): POST ${baseUrl}/api/sui/metadata`);
+  });
+} else {
+  // Use HTTPS for development (if certificates exist)
+  const https = require('https');
+  const fs = require('fs');
+  
+  try {
+    const sslOptions = {
+      key: fs.readFileSync('server.key'),
+      cert: fs.readFileSync('server.cert')
+    };
 
-https.createServer(sslOptions, app).listen(PORT, () => {
-  console.log(`🚀 Evarra Backend Service running on HTTPS port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🔐 Auth Register: POST http://localhost:${PORT}/api/auth/register`);
-  console.log(`🔐 Auth Login: POST http://localhost:${PORT}/api/auth/login`);
-  console.log(`🔐 Auth Health: GET http://localhost:${PORT}/api/auth/health`);
-  console.log(`🎯 Goals Create: POST http://localhost:${PORT}/api/goals`);
-  console.log(`🎯 Goals Get User: GET http://localhost:${PORT}/api/goals/user/:userId`);
-  console.log(`🎯 Goals Health: GET http://localhost:${PORT}/api/goals/health`);
-  console.log(`💰 Wallets Create: POST http://localhost:${PORT}/api/wallets`);
-  console.log(`💰 Wallets Get User: GET http://localhost:${PORT}/api/wallets/user/:userId`);
-  console.log(`💰 Wallets Health: GET http://localhost:${PORT}/api/wallets/health`);
-  console.log(`🔗 SUI Holdings (GET): http://localhost:${PORT}/api/sui/holdings?address=YOUR_ADDRESS`);
-  console.log(`🔗 SUI Holdings (POST): POST http://localhost:${PORT}/api/sui/holdings`);
-  console.log(`🔗 SUI Transactions (GET): http://localhost:${PORT}/api/sui/transactions?address=YOUR_ADDRESS&limit=50`);
-  console.log(`🔗 SUI Transactions (POST): POST http://localhost:${PORT}/api/sui/transactions`);
-  console.log(`🔗 SUI Metadata (POST): POST http://localhost:${PORT}/api/sui/metadata`);
-});
+    https.createServer(sslOptions, app).listen(PORT, () => {
+      console.log(`🚀 Evarra Backend Service running on HTTPS port ${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`🔐 Auth Register: POST http://localhost:${PORT}/api/auth/register`);
+      console.log(`🔐 Auth Login: POST http://localhost:${PORT}/api/auth/login`);
+      console.log(`🔐 Auth Health: GET http://localhost:${PORT}/api/auth/health`);
+      console.log(`🎯 Goals Create: POST http://localhost:${PORT}/api/goals`);
+      console.log(`🎯 Goals Get User: GET http://localhost:${PORT}/api/goals/user/:userId`);
+      console.log(`🎯 Goals Health: GET http://localhost:${PORT}/api/goals/health`);
+      console.log(`💰 Wallets Create: POST http://localhost:${PORT}/api/wallets`);
+      console.log(`💰 Wallets Get User: GET http://localhost:${PORT}/api/wallets/user/:userId`);
+      console.log(`💰 Wallets Health: GET http://localhost:${PORT}/api/wallets/health`);
+      console.log(`🔗 SUI Holdings (GET): http://localhost:${PORT}/api/sui/holdings?address=YOUR_ADDRESS`);
+      console.log(`🔗 SUI Holdings (POST): POST http://localhost:${PORT}/api/sui/holdings`);
+      console.log(`🔗 SUI Transactions (GET): http://localhost:${PORT}/api/sui/transactions?address=YOUR_ADDRESS&limit=50`);
+      console.log(`🔗 SUI Transactions (POST): POST http://localhost:${PORT}/api/sui/transactions`);
+      console.log(`🔗 SUI Metadata (POST): POST http://localhost:${PORT}/api/sui/metadata`);
+    });
+  } catch (error) {
+    console.log('SSL certificates not found, falling back to HTTP for development');
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Evarra Backend Service running on HTTP port ${PORT} (development mode)`);
+      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`🔐 Auth Register: POST http://localhost:${PORT}/api/auth/register`);
+      console.log(`🔐 Auth Login: POST http://localhost:${PORT}/api/auth/login`);
+      console.log(`🔐 Auth Health: GET http://localhost:${PORT}/api/auth/health`);
+      console.log(`🎯 Goals Create: POST http://localhost:${PORT}/api/goals`);
+      console.log(`🎯 Goals Get User: GET http://localhost:${PORT}/api/goals/user/:userId`);
+      console.log(`🎯 Goals Health: GET http://localhost:${PORT}/api/goals/health`);
+      console.log(`💰 Wallets Create: POST http://localhost:${PORT}/api/wallets`);
+      console.log(`💰 Wallets Get User: GET http://localhost:${PORT}/api/wallets/user/:userId`);
+      console.log(`💰 Wallets Health: GET http://localhost:${PORT}/api/wallets/health`);
+      console.log(`🔗 SUI Holdings (GET): http://localhost:${PORT}/api/sui/holdings?address=YOUR_ADDRESS`);
+      console.log(`🔗 SUI Holdings (POST): POST http://localhost:${PORT}/api/sui/holdings`);
+      console.log(`🔗 SUI Transactions (GET): http://localhost:${PORT}/api/sui/transactions?address=YOUR_ADDRESS&limit=50`);
+      console.log(`🔗 SUI Transactions (POST): POST http://localhost:${PORT}/api/sui/transactions`);
+      console.log(`🔗 SUI Metadata (POST): POST http://localhost:${PORT}/api/sui/metadata`);
+    });
+  }
+}
