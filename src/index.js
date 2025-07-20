@@ -126,8 +126,36 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || undefined
     });
 
-    // TEMPORARY: Return all transactions without filtering to debug
-    const relevantTransactions = apiResponse.data;
+    // Filter transactions that involve our address
+    const relevantTransactions = apiResponse.data.filter(tx => {
+        const sender = tx.transaction?.data?.sender;
+        const balanceChanges = tx.balanceChanges || [];
+        const effects = tx.effects || {};
+        const created = effects.created || [];
+        const mutated = effects.mutated || [];
+        
+        // Check if our address is the sender (outgoing)
+        if (sender === address) {
+            return true;
+        }
+        
+        // Check if our address appears as AddressOwner in balance changes
+        const hasBalanceChange = balanceChanges.some(change => {
+            return change.owner?.AddressOwner === address;
+        });
+        
+        // Check if our address appears as AddressOwner in created objects
+        const hasCreatedObject = created.some(obj => {
+            return obj.owner?.AddressOwner === address;
+        });
+        
+        // Check if our address appears as AddressOwner in mutated objects
+        const hasMutatedObject = mutated.some(obj => {
+            return obj.owner?.AddressOwner === address;
+        });
+        
+        return hasBalanceChange || hasCreatedObject || hasMutatedObject;
+    });
 
     // Sort by timestamp (newest first)
     relevantTransactions.sort((a, b) => {
