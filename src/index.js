@@ -114,7 +114,7 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || 'none'
     });
 
-    // Fetch transactions involving this address using a more comprehensive approach
+    // Fetch all recent transactions (no filtering at API level)
     const apiResponse = await client.queryTransactionBlocks({
         options: {
             showInput: true,
@@ -122,27 +122,42 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
             showEvents: true,
             showBalanceChanges: true
         },
-        limit: parsedLimit * 2, // Get more transactions to filter from
+        limit: parsedLimit * 3, // Get more transactions to analyze
         cursor: cursor || undefined
     });
 
-    // Filter transactions that involve our address
+    // Analyze all transactions to find ones involving our address
     const relevantTransactions = apiResponse.data.filter(tx => {
         const sender = tx.transaction?.data?.sender;
         const balanceChanges = tx.balanceChanges || [];
+        const effects = tx.effects || {};
+        const created = effects.created || [];
+        const mutated = effects.mutated || [];
         
-        // Include if our address is the sender (outgoing)
+        // Check if our address is the sender (outgoing)
         if (sender === address) {
             return true;
         }
         
-        // Include if our address appears in balance changes (incoming or outgoing)
+        // Check if our address appears in balance changes
         const hasBalanceChange = balanceChanges.some(change => {
             const owner = change.owner;
             return owner && owner.AddressOwner === address;
         });
         
-        return hasBalanceChange;
+        // Check if our address owns any created objects
+        const hasCreatedObject = created.some(obj => {
+            const owner = obj.owner;
+            return owner && owner.AddressOwner === address;
+        });
+        
+        // Check if our address owns any mutated objects
+        const hasMutatedObject = mutated.some(obj => {
+            const owner = obj.owner;
+            return owner && owner.AddressOwner === address;
+        });
+        
+        return hasBalanceChange || hasCreatedObject || hasMutatedObject;
     });
 
     // Sort by timestamp (newest first)
