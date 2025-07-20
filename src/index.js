@@ -114,47 +114,44 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || 'none'
     });
 
-    // Fetch all recent transactions (no filtering at API level)
-    const apiResponse = await client.queryTransactionBlocks({
-        options: {
-            showInput: true,
-            showEffects: true,
-            showEvents: true,
-            showBalanceChanges: true
-        },
-        limit: parsedLimit * 3, // Get more transactions to analyze
-        cursor: cursor || undefined
-    });
+    // Fetch both incoming and outgoing transactions using proper filters
+    const [fromResponse, toResponse] = await Promise.all([
+        // Fetch outgoing transactions (FROM this address)
+        client.queryTransactionBlocks({
+            filter: {
+                FromAddress: address
+            },
+            options: {
+                showInput: true,
+                showEffects: true,
+                showEvents: true,
+                showBalanceChanges: true
+            },
+            limit: parsedLimit,
+            cursor: cursor || undefined
+        }),
+        // Fetch incoming transactions (TO this address)
+        client.queryTransactionBlocks({
+            filter: {
+                ToAddress: address
+            },
+            options: {
+                showInput: true,
+                showEffects: true,
+                showEvents: true,
+                showBalanceChanges: true
+            },
+            limit: parsedLimit,
+            cursor: cursor || undefined
+        })
+    ]);
 
-    // Filter transactions that involve our address
-    const relevantTransactions = apiResponse.data.filter(tx => {
-        const sender = tx.transaction?.data?.sender;
-        const balanceChanges = tx.balanceChanges || [];
-        const effects = tx.effects || {};
-        const created = effects.created || [];
-        const mutated = effects.mutated || [];
-        
-        // Check if our address is the sender (outgoing)
-        if (sender === address) {
-            return true;
-        }
-        
-        // Check if our address appears as AddressOwner in balance changes
-        const hasBalanceChange = balanceChanges.some(change => {
-            return change.AddressOwner === address;
-        });
-        
-        // Check if our address appears as AddressOwner in created objects
-        const hasCreatedObject = created.some(obj => {
-            return obj.AddressOwner === address;
-        });
-        
-        // Check if our address appears as AddressOwner in mutated objects
-        const hasMutatedObject = mutated.some(obj => {
-            return obj.AddressOwner === address;
-        });
-        
-        return hasBalanceChange || hasCreatedObject || hasMutatedObject;
+    // Combine and sort transactions by timestamp (newest first)
+    const relevantTransactions = [...fromResponse.data, ...toResponse.data];
+    relevantTransactions.sort((a, b) => {
+        const timeA = new Date(a.timestampMs || 0).getTime();
+        const timeB = new Date(b.timestampMs || 0).getTime();
+        return timeB - timeA;
     });
 
     // Sort by timestamp (newest first)
@@ -167,9 +164,9 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     // Take only the requested limit
     const limitedTransactions = relevantTransactions.slice(0, parsedLimit);
 
-    // Determine if there are more pages
-    const hasNextPage = apiResponse.hasNextPage;
-    const nextCursor = apiResponse.nextCursor;
+    // Determine if there are more pages (simplified logic)
+    const hasNextPage = fromResponse.hasNextPage || toResponse.hasNextPage;
+    const nextCursor = fromResponse.nextCursor || toResponse.nextCursor;
 
     const response = {
         data: limitedTransactions,
