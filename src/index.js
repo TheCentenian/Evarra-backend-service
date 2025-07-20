@@ -114,24 +114,37 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || 'none'
     });
 
-    // Fetch both incoming and outgoing transactions using proper filters
-    const [fromResponse, toResponse] = await Promise.all([
-        // Fetch outgoing transactions (FROM this address)
-        client.queryTransactionBlocks({
-            filter: {
-                FromAddress: address
-            },
-            options: {
-                showInput: true,
-                showEffects: true,
-                showEvents: true,
-                showBalanceChanges: true
-            },
-            limit: parsedLimit,
-            cursor: cursor || undefined
-        }),
-        // Fetch incoming transactions (TO this address)
-        client.queryTransactionBlocks({
+    // Log request parameters
+    logger.info('Fetching transactions with params', {
+        address,
+        limit: parsedLimit,
+        cursor: cursor || 'none'
+    });
+
+    // Try multiple approaches to get both incoming and outgoing transactions
+    logger.info('Fetching transactions using multiple filter strategies...');
+    
+    // Strategy 1: Fetch outgoing transactions (FROM this address)
+    const fromResponse = await client.queryTransactionBlocks({
+        filter: {
+            FromAddress: address
+        },
+        options: {
+            showInput: true,
+            showEffects: true,
+            showEvents: true,
+            showBalanceChanges: true
+        },
+        limit: parsedLimit,
+        cursor: cursor || undefined
+    });
+
+    // Strategy 2: Try to fetch incoming transactions using different filters
+    let incomingTransactions = [];
+    
+    // Try ToAddress filter first
+    try {
+        const toResponse = await client.queryTransactionBlocks({
             filter: {
                 ToAddress: address
             },
@@ -143,16 +156,53 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
             },
             limit: parsedLimit,
             cursor: cursor || undefined
-        })
-    ]);
+        });
+        incomingTransactions = toResponse.data;
+        logger.info('ToAddress filter returned transactions', { count: incomingTransactions.length });
+    } catch (error) {
+        logger.warn('ToAddress filter failed, trying alternative approach', { error: error.message });
+    }
 
-    // Combine and sort transactions by timestamp (newest first)
-    const relevantTransactions = [...fromResponse.data, ...toResponse.data];
-    relevantTransactions.sort((a, b) => {
-        const timeA = new Date(a.timestampMs || 0).getTime();
-        const timeB = new Date(b.timestampMs || 0).getTime();
-        return timeB - timeA;
-    });
+    // Strategy 3: If ToAddress didn't work, try fetching recent transactions and filtering by balance changes
+    if (incomingTransactions.length === 0) {
+        logger.info('ToAddress filter returned no results, trying balance change filtering...');
+        
+        const recentTransactionsResponse = await client.queryTransactionBlocks({
+            options: {
+                showInput: true,
+                showEffects: true,
+                showEvents: true,
+                showBalanceChanges: true
+            },
+            limit: parsedLimit * 3, // Get more transactions to filter from
+            cursor: cursor || undefined
+        });
+
+        // Filter for transactions where our address received tokens (positive balance changes)
+        incomingTransactions = recentTransactionsResponse.data.filter(tx => {
+            const balanceChanges = tx.balanceChanges || [];
+            const sender = tx.transaction?.data?.sender;
+            
+            // Skip if this transaction was sent by our address (we already have those)
+            if (sender === address) return false;
+            
+            return balanceChanges.some(change => {
+                if (!change.owner) return false;
+                
+                // Check if our address received tokens (positive amount)
+                if ('AddressOwner' in change.owner && change.owner.AddressOwner === address) {
+                    const amount = parseInt(change.amount);
+                    return amount > 0; // Positive amount means received
+                }
+                return false;
+            });
+        });
+        
+        logger.info('Balance change filtering found incoming transactions', { count: incomingTransactions.length });
+    }
+
+    // Combine all transactions
+    const relevantTransactions = [...fromResponse.data, ...incomingTransactions];
 
     // Sort by timestamp (newest first)
     relevantTransactions.sort((a, b) => {
@@ -165,8 +215,8 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     const limitedTransactions = relevantTransactions.slice(0, parsedLimit);
 
     // Determine if there are more pages (simplified logic)
-    const hasNextPage = fromResponse.hasNextPage || toResponse.hasNextPage;
-    const nextCursor = fromResponse.nextCursor || toResponse.nextCursor;
+    const hasNextPage = fromResponse.hasNextPage;
+    const nextCursor = fromResponse.nextCursor;
 
     const response = {
         data: limitedTransactions,
@@ -176,9 +226,20 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
 
     // Log the response for debugging
     logger.info('Successfully fetched SUI transactions', {
-        transactionCount: response.data.length,
+        address,
+        outgoingCount: fromResponse.data.length,
+        incomingCount: incomingTransactions.length,
+        totalRelevant: relevantTransactions.length,
+        finalCount: response.data.length,
         hasNextPage: response.hasNextPage,
-        nextCursor: response.nextCursor
+        nextCursor: response.nextCursor,
+        sampleTransactions: response.data.slice(0, 3).map(tx => ({
+            digest: tx.digest,
+            sender: tx.transaction?.data?.sender,
+            timestamp: tx.timestampMs,
+            balanceChanges: tx.balanceChanges?.length || 0,
+            isIncoming: tx.transaction?.data?.sender !== address
+        }))
     });
 
     return {
