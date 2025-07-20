@@ -95,20 +95,58 @@ const fetchSuiTransactions = async (address: string, limit: string | number = 50
     cursor: cursor || 'none'
   });
 
-  // Fetch transactions with all needed data
-  const response = await client.queryTransactionBlocks({
-    filter: {
-      FromAddress: address
-    },
-    options: {
-      showInput: true,
-      showEffects: true,
-      showEvents: true,
-      showBalanceChanges: true
-    },
-    limit: parsedLimit,
-    cursor: cursor || undefined
+  // Fetch both incoming and outgoing transactions
+  const [fromResponse, toResponse] = await Promise.all([
+    // Fetch outgoing transactions (FROM this address)
+    client.queryTransactionBlocks({
+      filter: {
+        FromAddress: address
+      },
+      options: {
+        showInput: true,
+        showEffects: true,
+        showEvents: true,
+        showBalanceChanges: true
+      },
+      limit: parsedLimit,
+      cursor: cursor || undefined
+    }),
+    // Fetch incoming transactions (TO this address)
+    client.queryTransactionBlocks({
+      filter: {
+        ToAddress: address
+      },
+      options: {
+        showInput: true,
+        showEffects: true,
+        showEvents: true,
+        showBalanceChanges: true
+      },
+      limit: parsedLimit,
+      cursor: cursor || undefined
+    })
+  ]);
+
+  // Combine and sort transactions by timestamp (newest first)
+  const allTransactions = [...fromResponse.data, ...toResponse.data];
+  allTransactions.sort((a, b) => {
+    const timeA = new Date(a.timestampMs || 0).getTime();
+    const timeB = new Date(b.timestampMs || 0).getTime();
+    return timeB - timeA;
   });
+
+  // Take only the requested limit
+  const limitedTransactions = allTransactions.slice(0, parsedLimit);
+
+  // Determine if there are more pages (simplified logic)
+  const hasNextPage = fromResponse.hasNextPage || toResponse.hasNextPage;
+  const nextCursor = fromResponse.nextCursor || toResponse.nextCursor;
+
+  const response = {
+    data: limitedTransactions,
+    hasNextPage,
+    nextCursor
+  };
 
   // Log the response for debugging
   logger.info('Successfully fetched SUI transactions', {

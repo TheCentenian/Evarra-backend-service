@@ -11,7 +11,22 @@ class MongoDBGoalService {
   async connect() {
     try {
       const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/evarra';
-      this.client = new MongoClient(mongoUri);
+      
+      // SSL/TLS configuration for MongoDB Atlas compatibility
+      const options = {
+        ssl: true,
+        tls: true,
+        tlsAllowInvalidCertificates: false,
+        tlsAllowInvalidHostnames: false,
+        tlsInsecure: false,
+        // Additional SSL options for production
+        ...(process.env.NODE_ENV === 'production' && {
+          sslValidate: true,
+          checkServerIdentity: () => undefined, // Skip hostname verification for Atlas
+        }),
+      };
+      
+      this.client = new MongoClient(mongoUri, options);
       
       await this.client.connect();
       this.db = this.client.db(process.env.MONGODB_DATABASE || 'evarra');
