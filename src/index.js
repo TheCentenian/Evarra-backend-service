@@ -126,11 +126,8 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || undefined
     });
 
-    // Simple approach: include transactions where our address appears anywhere
-    const relevantTransactions = apiResponse.data.filter(tx => {
-        const txString = JSON.stringify(tx);
-        return txString.includes(address);
-    });
+    // TEMPORARY: Return all transactions without filtering to debug
+    const relevantTransactions = apiResponse.data;
 
     // Sort by timestamp (newest first)
     relevantTransactions.sort((a, b) => {
