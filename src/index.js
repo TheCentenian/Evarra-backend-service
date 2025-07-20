@@ -124,20 +124,23 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     // Try multiple approaches to get both incoming and outgoing transactions
     logger.info('Fetching transactions using multiple filter strategies...');
     
-    // Strategy 1: Fetch outgoing transactions (FROM this address)
-    const fromResponse = await client.queryTransactionBlocks({
-        filter: {
-            FromAddress: address
-        },
-        options: {
-            showInput: true,
-            showEffects: true,
-            showEvents: true,
-            showBalanceChanges: true
-        },
-        limit: parsedLimit,
-        cursor: cursor || undefined
-    });
+    // Strategy 1: Fetch outgoing transactions (FROM this address) - DISABLED FOR TESTING
+    // const fromResponse = await client.queryTransactionBlocks({
+    //     filter: {
+    //         FromAddress: address
+    //     },
+    //     options: {
+    //         showInput: true,
+    //         showEffects: true,
+    //         showEvents: true,
+    //         showBalanceChanges: true
+    //     },
+    //     limit: parsedLimit,
+    //     cursor: cursor || undefined
+    // });
+    
+    // For testing, create empty response
+    const fromResponse = { data: [], hasNextPage: false, nextCursor: null };
 
     // Strategy 2: Try to fetch incoming transactions using different filters
     let incomingTransactions = [];
@@ -225,7 +228,7 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     };
 
     // Log the response for debugging
-    logger.info('Successfully fetched SUI transactions', {
+    logger.info('Successfully fetched SUI transactions (INBOUND FOCUSED)', {
         address,
         outgoingCount: fromResponse.data.length,
         incomingCount: incomingTransactions.length,
