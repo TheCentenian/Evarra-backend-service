@@ -124,23 +124,20 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     // Try multiple approaches to get both incoming and outgoing transactions
     logger.info('Fetching transactions using multiple filter strategies...');
     
-    // Strategy 1: Fetch outgoing transactions (FROM this address) - DISABLED FOR TESTING
-    // const fromResponse = await client.queryTransactionBlocks({
-    //     filter: {
-    //         FromAddress: address
-    //     },
-    //     options: {
-    //         showInput: true,
-    //         showEffects: true,
-    //         showEvents: true,
-    //         showBalanceChanges: true
-    //     },
-    //     limit: parsedLimit,
-    //     cursor: cursor || undefined
-    // });
-    
-    // For testing, create empty response
-    const fromResponse = { data: [], hasNextPage: false, nextCursor: null };
+    // Strategy 1: Fetch outgoing transactions (FROM this address)
+    const fromResponse = await client.queryTransactionBlocks({
+        filter: {
+            FromAddress: address
+        },
+        options: {
+            showInput: true,
+            showEffects: true,
+            showEvents: true,
+            showBalanceChanges: true
+        },
+        limit: parsedLimit,
+        cursor: cursor || undefined
+    });
 
     // Strategy 2: Fetch incoming transactions using ToAddress filter
     let incomingTransactions = [];
@@ -173,21 +170,23 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         incomingTransactions = [];
     }
 
-    // Only use incoming transactions (ToAddress filter results)
-    // Also manually filter out any transactions where our address is the sender
-    const relevantTransactions = incomingTransactions.filter(tx => {
+    // Combine both incoming and outgoing transactions
+    const allTransactions = [...fromResponse.data, ...incomingTransactions];
+    
+    // Filter out any duplicates and ensure proper categorization
+    const relevantTransactions = allTransactions.filter(tx => {
         const sender = tx.transaction?.data?.sender;
         const isOutgoing = sender === address;
         
-        if (isOutgoing) {
-            logger.warn('Filtering out outgoing transaction', { 
-                digest: tx.digest, 
-                sender, 
-                address 
-            });
-        }
+        // Log for debugging
+        logger.debug('Processing transaction', { 
+            digest: tx.digest, 
+            sender, 
+            isOutgoing,
+            address 
+        });
         
-        return !isOutgoing; // Only keep transactions where sender is NOT our address
+        return true; // Keep all transactions now
     });
 
     // Sort by timestamp (newest first)
@@ -211,7 +210,7 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     };
 
     // Log the response for debugging
-    logger.info('Successfully fetched SUI transactions (INBOUND FOCUSED)', {
+    logger.info('Successfully fetched SUI transactions (BIDIRECTIONAL)', {
         address,
         outgoingCount: fromResponse.data.length,
         incomingCount: incomingTransactions.length,
