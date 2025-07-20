@@ -141,17 +141,17 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         
         // Check if our address appears as AddressOwner in balance changes
         const hasBalanceChange = balanceChanges.some(change => {
-            return change.owner?.AddressOwner === address;
+            return change.AddressOwner === address;
         });
         
         // Check if our address appears as AddressOwner in created objects
         const hasCreatedObject = created.some(obj => {
-            return obj.owner?.AddressOwner === address;
+            return obj.AddressOwner === address;
         });
         
         // Check if our address appears as AddressOwner in mutated objects
         const hasMutatedObject = mutated.some(obj => {
-            return obj.owner?.AddressOwner === address;
+            return obj.AddressOwner === address;
         });
         
         return hasBalanceChange || hasCreatedObject || hasMutatedObject;
