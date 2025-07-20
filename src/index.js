@@ -160,14 +160,35 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
             cursor: cursor || undefined
         });
         incomingTransactions = toResponse.data;
-        logger.info('ToAddress filter returned transactions', { count: incomingTransactions.length });
+        logger.info('ToAddress filter returned transactions', { 
+            count: incomingTransactions.length,
+            sampleTransactions: incomingTransactions.slice(0, 3).map(tx => ({
+                digest: tx.digest,
+                sender: tx.transaction?.data?.sender,
+                isOutgoing: tx.transaction?.data?.sender === address
+            }))
+        });
     } catch (error) {
         logger.warn('ToAddress filter failed', { error: error.message });
         incomingTransactions = [];
     }
 
     // Only use incoming transactions (ToAddress filter results)
-    const relevantTransactions = incomingTransactions;
+    // Also manually filter out any transactions where our address is the sender
+    const relevantTransactions = incomingTransactions.filter(tx => {
+        const sender = tx.transaction?.data?.sender;
+        const isOutgoing = sender === address;
+        
+        if (isOutgoing) {
+            logger.warn('Filtering out outgoing transaction', { 
+                digest: tx.digest, 
+                sender, 
+                address 
+            });
+        }
+        
+        return !isOutgoing; // Only keep transactions where sender is NOT our address
+    });
 
     // Sort by timestamp (newest first)
     relevantTransactions.sort((a, b) => {
