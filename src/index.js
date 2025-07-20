@@ -142,10 +142,9 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     // For testing, create empty response
     const fromResponse = { data: [], hasNextPage: false, nextCursor: null };
 
-    // Strategy 2: Try to fetch incoming transactions using different filters
+    // Strategy 2: Fetch incoming transactions using ToAddress filter
     let incomingTransactions = [];
     
-    // Try ToAddress filter first
     try {
         const toResponse = await client.queryTransactionBlocks({
             filter: {
@@ -163,45 +162,8 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         incomingTransactions = toResponse.data;
         logger.info('ToAddress filter returned transactions', { count: incomingTransactions.length });
     } catch (error) {
-        logger.warn('ToAddress filter failed, trying alternative approach', { error: error.message });
-    }
-
-    // Strategy 3: If ToAddress didn't work, try fetching recent transactions and filtering by balance changes
-    if (incomingTransactions.length === 0) {
-        logger.info('ToAddress filter returned no results, trying balance change filtering...');
-        
-        const recentTransactionsResponse = await client.queryTransactionBlocks({
-            options: {
-                showInput: true,
-                showEffects: true,
-                showEvents: true,
-                showBalanceChanges: true
-            },
-            limit: parsedLimit * 3, // Get more transactions to filter from
-            cursor: cursor || undefined
-        });
-
-        // Filter for transactions where our address received tokens (positive balance changes)
-        incomingTransactions = recentTransactionsResponse.data.filter(tx => {
-            const balanceChanges = tx.balanceChanges || [];
-            const sender = tx.transaction?.data?.sender;
-            
-            // Skip if this transaction was sent by our address (we already have those)
-            if (sender === address) return false;
-            
-            return balanceChanges.some(change => {
-                if (!change.owner) return false;
-                
-                // Check if our address received tokens (positive amount)
-                if ('AddressOwner' in change.owner && change.owner.AddressOwner === address) {
-                    const amount = parseInt(change.amount);
-                    return amount > 0; // Positive amount means received
-                }
-                return false;
-            });
-        });
-        
-        logger.info('Balance change filtering found incoming transactions', { count: incomingTransactions.length });
+        logger.warn('ToAddress filter failed', { error: error.message });
+        incomingTransactions = [];
     }
 
     // Combine all transactions
