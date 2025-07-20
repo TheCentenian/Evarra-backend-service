@@ -166,8 +166,8 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         incomingTransactions = [];
     }
 
-    // Combine all transactions
-    const relevantTransactions = [...fromResponse.data, ...incomingTransactions];
+    // Only use incoming transactions (ToAddress filter results)
+    const relevantTransactions = incomingTransactions;
 
     // Sort by timestamp (newest first)
     relevantTransactions.sort((a, b) => {
