@@ -23,7 +23,8 @@ const cacheRoutes = require('./routes/cache');
 const logger = {
     info: (message, data) => console.log(`[INFO] ${message}`, data || ''),
     error: (message, data) => console.error(`[ERROR] ${message}`, data || ''),
-    warn: (message, data) => console.warn(`[WARN] ${message}`, data || '')
+    warn: (message, data) => console.warn(`[WARN] ${message}`, data || ''),
+    debug: (message, data) => console.debug(`[DEBUG] ${message}`, data || '')
 };
 const validateSuiAddress = (address) => {
     return /^0x[a-fA-F0-9]{64}$/.test(address);
