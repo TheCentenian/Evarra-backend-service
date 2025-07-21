@@ -122,11 +122,13 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || 'none'
     });
 
-    // Use a single query to get ALL transactions involving this address
-    logger.info('Fetching all transactions involving address...');
+    // Use InputObject filter to get transactions involving this address
+    logger.info('Fetching transactions using InputObject filter...');
     
     const response = await client.queryTransactionBlocks({
-        // No filter - this will return all transactions involving the address
+        filter: {
+            InputObject: address  // This should catch transactions where the address is involved
+        },
         options: {
             showInput: true,
             showEffects: true,
@@ -136,34 +138,25 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         limit: parsedLimit,
         cursor: cursor || undefined
     });
+    
+    const relevantTransactions = response.data;
+    
+    logger.info('InputObject filter results', {
+        totalFetched: response.data.length,
+        relevantCount: relevantTransactions.length
+    });
 
-    // Filter transactions to only include those involving our address
-    const relevantTransactions = response.data.filter(tx => {
+    // Log transaction details for debugging
+    relevantTransactions.forEach(tx => {
         const sender = tx.transaction?.data?.sender;
-        const recipients = tx.transaction?.data?.gasData?.owner;
-        const balanceChanges = tx.balanceChanges || [];
+        const isOutgoing = sender === address;
         
-        // Check if our address is involved in any way
-        const isSender = sender === address;
-        const isRecipient = recipients === address;
-        const hasBalanceChange = balanceChanges.some(change => {
-            if (change.owner && typeof change.owner === 'object' && 'AddressOwner' in change.owner) {
-                return change.owner.AddressOwner === address;
-            }
-            return false;
-        });
-        
-        // Log for debugging
         logger.debug('Processing transaction', { 
             digest: tx.digest, 
             sender, 
-            isSender,
-            isRecipient,
-            hasBalanceChange,
+            isOutgoing,
             address 
         });
-        
-        return isSender || isRecipient || hasBalanceChange;
     });
 
     // Sort by timestamp (newest first)
@@ -176,7 +169,7 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     // Take only the requested limit
     const limitedTransactions = relevantTransactions.slice(0, parsedLimit);
 
-    // Use the original response for pagination
+    // Use pagination from the original response
     const hasNextPage = response.hasNextPage;
     const nextCursor = response.nextCursor;
 
