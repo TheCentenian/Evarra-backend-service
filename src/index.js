@@ -115,100 +115,161 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || 'none'
     });
 
-    // Log request parameters
-    logger.info('Fetching transactions with params', {
-        address,
-        limit: parsedLimit,
-        cursor: cursor || 'none'
-    });
-
-    // Use InputObject filter to get transactions involving this address
-    logger.info('Fetching transactions using InputObject filter...');
-    
-    const response = await client.queryTransactionBlocks({
-        filter: {
-            InputObject: address  // This should catch transactions where the address is involved
-        },
-        options: {
-            showInput: true,
-            showEffects: true,
-            showEvents: true,
-            showBalanceChanges: true
-        },
-        limit: parsedLimit,
-        cursor: cursor || undefined
-    });
-    
-    const relevantTransactions = response.data;
-    
-    logger.info('InputObject filter results', {
-        totalFetched: response.data.length,
-        relevantCount: relevantTransactions.length
-    });
-
-    // Log transaction details for debugging
-    relevantTransactions.forEach(tx => {
-        const sender = tx.transaction?.data?.sender;
-        const isOutgoing = sender === address;
+    try {
+        // Fetch both incoming and outgoing transactions using dual API calls
+        logger.info('Fetching transactions using bidirectional approach...');
         
-        logger.debug('Processing transaction', { 
-            digest: tx.digest, 
-            sender, 
-            isOutgoing,
-            address 
+        // Make two parallel API calls: one for outgoing (FromAddress) and one for incoming (ToAddress)
+        const [outgoingResponse, incomingResponse] = await Promise.all([
+            client.queryTransactionBlocks({
+                filter: {
+                    FromAddress: address
+                },
+                options: {
+                    showInput: true,
+                    showEffects: true,
+                    showEvents: true,
+                    showBalanceChanges: true
+                },
+                limit: parsedLimit,
+                cursor: cursor || undefined
+            }),
+            client.queryTransactionBlocks({
+                filter: {
+                    ToAddress: address
+                },
+                options: {
+                    showInput: true,
+                    showEffects: true,
+                    showEvents: true,
+                    showBalanceChanges: true
+                },
+                limit: parsedLimit,
+                cursor: cursor || undefined
+            })
+        ]);
+        
+        // Log raw responses for debugging
+        logger.info('Raw API responses', {
+            outgoingResponseData: outgoingResponse.data?.length || 0,
+            incomingResponseData: incomingResponse.data?.length || 0,
+            outgoingHasNextPage: outgoingResponse.hasNextPage,
+            incomingHasNextPage: incomingResponse.hasNextPage,
+            outgoingNextCursor: outgoingResponse.nextCursor,
+            incomingNextCursor: incomingResponse.nextCursor
         });
-    });
+        
+        // Combine and deduplicate transactions
+        const allTransactions = [...outgoingResponse.data, ...incomingResponse.data];
+        const transactionMap = new Map();
+        
+        allTransactions.forEach(tx => {
+            if (!transactionMap.has(tx.digest)) {
+                transactionMap.set(tx.digest, tx);
+            }
+        });
+        
+        const relevantTransactions = Array.from(transactionMap.values());
+        
+        logger.info('Bidirectional fetch results', {
+            outgoingCount: outgoingResponse.data.length,
+            incomingCount: incomingResponse.data.length,
+            totalCombined: allTransactions.length,
+            afterDeduplication: relevantTransactions.length
+        });
 
-    // Sort by timestamp (newest first)
-    relevantTransactions.sort((a, b) => {
-        const timeA = new Date(a.timestampMs || 0).getTime();
-        const timeB = new Date(b.timestampMs || 0).getTime();
-        return timeB - timeA;
-    });
+        // Log transaction details for debugging
+        relevantTransactions.forEach(tx => {
+            const sender = tx.transaction?.data?.sender;
+            const isOutgoing = sender === address;
+            
+            logger.debug('Processing transaction', { 
+                digest: tx.digest, 
+                sender, 
+                isOutgoing,
+                address 
+            });
+        });
 
-    // Take only the requested limit
-    const limitedTransactions = relevantTransactions.slice(0, parsedLimit);
+        // Sort by timestamp (newest first)
+        relevantTransactions.sort((a, b) => {
+            const timeA = new Date(a.timestampMs || 0).getTime();
+            const timeB = new Date(b.timestampMs || 0).getTime();
+            return timeB - timeA;
+        });
 
-    // Use pagination from the original response
-    const hasNextPage = response.hasNextPage;
-    const nextCursor = response.nextCursor;
+        // Take only the requested limit
+        const limitedTransactions = relevantTransactions.slice(0, parsedLimit);
 
-    const responseData = {
-        data: limitedTransactions,
-        hasNextPage,
-        nextCursor
-    };
+        // Determine pagination - if either response has more pages, we have more data
+        const hasNextPage = outgoingResponse.hasNextPage || incomingResponse.hasNextPage;
+        const nextCursor = outgoingResponse.nextCursor || incomingResponse.nextCursor;
 
-    // Log the response for debugging
-    logger.info('Successfully fetched SUI transactions (SINGLE QUERY)', {
-        address,
-        totalFetched: response.data.length,
-        totalRelevant: relevantTransactions.length,
-        finalCount: responseData.data.length,
-        hasNextPage: responseData.hasNextPage,
-        nextCursor: responseData.nextCursor,
-        sampleTransactions: responseData.data.slice(0, 3).map(tx => ({
-            digest: tx.digest,
-            sender: tx.transaction?.data?.sender,
-            timestamp: tx.timestampMs,
-            balanceChanges: tx.balanceChanges?.length || 0,
-            isIncoming: tx.transaction?.data?.sender !== address
-        }))
-    });
+        const responseData = {
+            data: limitedTransactions,
+            hasNextPage,
+            nextCursor
+        };
 
-    return {
-        success: true,
-        data: {
-            transactions: responseData.data,
+        // Log the response for debugging
+        logger.info('Successfully fetched SUI transactions (BIDIRECTIONAL)', {
+            address,
+            outgoingFetched: outgoingResponse.data.length,
+            incomingFetched: incomingResponse.data.length,
+            totalCombined: allTransactions.length,
+            finalCount: responseData.data.length,
+            hasNextPage: responseData.hasNextPage,
             nextCursor: responseData.nextCursor,
-            hasNextPage: responseData.hasNextPage
-        },
-        metadata: {
-            duration: 0, // TODO: Add timing
-            timestamp: new Date().toISOString(),
-            service: 'evarra-backend-service'
-        }
-    };
+            sampleTransactions: responseData.data.slice(0, 3).map(tx => ({
+                digest: tx.digest,
+                sender: tx.transaction?.data?.sender,
+                timestamp: tx.timestampMs,
+                balanceChanges: tx.balanceChanges?.length || 0,
+                isIncoming: tx.transaction?.data?.sender !== address
+            }))
+        });
+
+        return {
+            success: true,
+            data: {
+                transactions: responseData.data,
+                nextCursor: responseData.nextCursor,
+                hasNextPage: responseData.hasNextPage
+            },
+            metadata: {
+                duration: 0, // TODO: Add timing
+                timestamp: new Date().toISOString(),
+                service: 'evarra-backend-service'
+            }
+        };
+    } catch (error) {
+        logger.error('Error fetching transactions from Sui API', {
+            address,
+            limit: parsedLimit,
+            cursor,
+            error: error instanceof Error ? {
+                message: error.message,
+                name: error.name,
+                stack: error.stack
+            } : error
+        });
+        
+        // Return empty result with error info
+        return {
+            success: true,
+            data: {
+                transactions: [],
+                nextCursor: null,
+                hasNextPage: false
+            },
+            metadata: {
+                duration: 0,
+                timestamp: new Date().toISOString(),
+                service: 'evarra-backend-service',
+                error: error.message || 'Unknown error occurred'
+            }
+        };
+    }
 };
 
 // Shared function for fetching SUI metadata
