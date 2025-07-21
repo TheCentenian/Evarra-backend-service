@@ -122,14 +122,11 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || 'none'
     });
 
-    // Try multiple approaches to get both incoming and outgoing transactions
-    logger.info('Fetching transactions using multiple filter strategies...');
+    // Use a single query to get ALL transactions involving this address
+    logger.info('Fetching all transactions involving address...');
     
-    // Strategy 1: Fetch outgoing transactions (FROM this address)
-    const fromResponse = await client.queryTransactionBlocks({
-        filter: {
-            FromAddress: address
-        },
+    const response = await client.queryTransactionBlocks({
+        // No filter - this will return all transactions involving the address
         options: {
             showInput: true,
             showEffects: true,
@@ -140,54 +137,33 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         cursor: cursor || undefined
     });
 
-    // Strategy 2: Fetch incoming transactions using ToAddress filter
-    let incomingTransactions = [];
-    
-    try {
-        const toResponse = await client.queryTransactionBlocks({
-            filter: {
-                ToAddress: address
-            },
-            options: {
-                showInput: true,
-                showEffects: true,
-                showEvents: true,
-                showBalanceChanges: true
-            },
-            limit: parsedLimit,
-            cursor: cursor || undefined
-        });
-        incomingTransactions = toResponse.data;
-        logger.info('ToAddress filter returned transactions', { 
-            count: incomingTransactions.length,
-            sampleTransactions: incomingTransactions.slice(0, 3).map(tx => ({
-                digest: tx.digest,
-                sender: tx.transaction?.data?.sender,
-                isOutgoing: tx.transaction?.data?.sender === address
-            }))
-        });
-    } catch (error) {
-        logger.warn('ToAddress filter failed', { error: error.message });
-        incomingTransactions = [];
-    }
-
-    // Combine both incoming and outgoing transactions
-    const allTransactions = [...fromResponse.data, ...incomingTransactions];
-    
-    // Filter out any duplicates and ensure proper categorization
-    const relevantTransactions = allTransactions.filter(tx => {
+    // Filter transactions to only include those involving our address
+    const relevantTransactions = response.data.filter(tx => {
         const sender = tx.transaction?.data?.sender;
-        const isOutgoing = sender === address;
+        const recipients = tx.transaction?.data?.gasData?.owner;
+        const balanceChanges = tx.balanceChanges || [];
+        
+        // Check if our address is involved in any way
+        const isSender = sender === address;
+        const isRecipient = recipients === address;
+        const hasBalanceChange = balanceChanges.some(change => {
+            if (change.owner && typeof change.owner === 'object' && 'AddressOwner' in change.owner) {
+                return change.owner.AddressOwner === address;
+            }
+            return false;
+        });
         
         // Log for debugging
         logger.debug('Processing transaction', { 
             digest: tx.digest, 
             sender, 
-            isOutgoing,
+            isSender,
+            isRecipient,
+            hasBalanceChange,
             address 
         });
         
-        return true; // Keep all transactions now
+        return isSender || isRecipient || hasBalanceChange;
     });
 
     // Sort by timestamp (newest first)
@@ -200,26 +176,25 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     // Take only the requested limit
     const limitedTransactions = relevantTransactions.slice(0, parsedLimit);
 
-    // Determine if there are more pages (simplified logic)
-    const hasNextPage = fromResponse.hasNextPage;
-    const nextCursor = fromResponse.nextCursor;
+    // Use the original response for pagination
+    const hasNextPage = response.hasNextPage;
+    const nextCursor = response.nextCursor;
 
-    const response = {
+    const responseData = {
         data: limitedTransactions,
         hasNextPage,
         nextCursor
     };
 
     // Log the response for debugging
-    logger.info('Successfully fetched SUI transactions (BIDIRECTIONAL)', {
+    logger.info('Successfully fetched SUI transactions (SINGLE QUERY)', {
         address,
-        outgoingCount: fromResponse.data.length,
-        incomingCount: incomingTransactions.length,
+        totalFetched: response.data.length,
         totalRelevant: relevantTransactions.length,
-        finalCount: response.data.length,
-        hasNextPage: response.hasNextPage,
-        nextCursor: response.nextCursor,
-        sampleTransactions: response.data.slice(0, 3).map(tx => ({
+        finalCount: responseData.data.length,
+        hasNextPage: responseData.hasNextPage,
+        nextCursor: responseData.nextCursor,
+        sampleTransactions: responseData.data.slice(0, 3).map(tx => ({
             digest: tx.digest,
             sender: tx.transaction?.data?.sender,
             timestamp: tx.timestampMs,
@@ -231,9 +206,9 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
     return {
         success: true,
         data: {
-            transactions: response.data,
-            nextCursor: response.nextCursor,
-            hasNextPage: response.hasNextPage
+            transactions: responseData.data,
+            nextCursor: responseData.nextCursor,
+            hasNextPage: responseData.hasNextPage
         },
         metadata: {
             duration: 0, // TODO: Add timing
