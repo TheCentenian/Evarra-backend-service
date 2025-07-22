@@ -166,10 +166,23 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
         allTransactions.forEach(tx => {
             if (!transactionMap.has(tx.digest)) {
                 transactionMap.set(tx.digest, tx);
+            } else {
+                logger.debug('Duplicate transaction found during deduplication', {
+                    digest: tx.digest,
+                    existingSender: transactionMap.get(tx.digest).transaction?.data?.sender,
+                    newSender: tx.transaction?.data?.sender
+                });
             }
         });
         
         const relevantTransactions = Array.from(transactionMap.values());
+        
+        // Log deduplication results
+        logger.info('Deduplication completed', {
+            totalCombined: allTransactions.length,
+            afterDeduplication: relevantTransactions.length,
+            duplicatesRemoved: allTransactions.length - relevantTransactions.length
+        });
         
         logger.info('Bidirectional fetch results', {
             outgoingCount: outgoingResponse.data.length,
@@ -191,11 +204,38 @@ const fetchSuiTransactions = async (address, limit = 50, cursor = null) => {
             });
         });
 
-        // Sort by timestamp (newest first)
+        // Sort by timestamp (newest first) - FIXED VERSION
         relevantTransactions.sort((a, b) => {
-            const timeA = new Date(a.timestampMs || 0).getTime();
-            const timeB = new Date(b.timestampMs || 0).getTime();
-            return timeB - timeA;
+            const timeA = parseInt(a.timestampMs || 0);
+            const timeB = parseInt(b.timestampMs || 0);
+            
+            // Add error handling for invalid timestamps
+            if (isNaN(timeA) || isNaN(timeB)) {
+                logger.warn('Invalid timestamp found during sorting', { 
+                    a: a.timestampMs, 
+                    b: b.timestampMs,
+                    digestA: a.digest,
+                    digestB: b.digest
+                });
+                return 0;
+            }
+            
+            return timeB - timeA; // Newest first
+        });
+        
+        // Log sorting results for debugging
+        logger.info('Sorting completed', {
+            totalTransactions: relevantTransactions.length,
+            firstTransaction: relevantTransactions[0] ? {
+                digest: relevantTransactions[0].digest,
+                timestamp: relevantTransactions[0].timestampMs,
+                sender: relevantTransactions[0].transaction?.data?.sender
+            } : null,
+            secondTransaction: relevantTransactions[1] ? {
+                digest: relevantTransactions[1].digest,
+                timestamp: relevantTransactions[1].timestampMs,
+                sender: relevantTransactions[1].transaction?.data?.sender
+            } : null
         });
 
         // Take only the requested limit
